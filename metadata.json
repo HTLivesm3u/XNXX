@@ -1,0 +1,5 @@
+{
+  "name": "Adult Live TV",
+  "description": "Premium live TV streaming for adult content with MPD and M3U8 support.",
+  "requestFramePermissions": []
+}
