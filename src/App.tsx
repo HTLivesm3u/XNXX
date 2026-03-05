@@ -6,7 +6,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import shaka from 'shaka-player';
 import 'mux.js';
-import { Play, Tv, Search, Info, Settings, ChevronRight, Volume2, Shield, AlertCircle } from 'lucide-react';
+import { 
+  Play, Tv, Search, Info, Settings, ChevronRight, 
+  Volume2, Shield, AlertCircle, Home, LayoutGrid, 
+  Heart, User, Maximize2, RefreshCcw, X
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Channel {
@@ -20,17 +24,18 @@ interface Channel {
   headers?: Record<string, string>;
 }
 
-const VideoPlayer = ({ channel }: { channel: Channel }) => {
+const VideoPlayer = ({ channel, onFullScreen }: { channel: Channel, onFullScreen: () => void }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [player, setPlayer] = useState<shaka.Player | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
 
   useEffect(() => {
     shaka.polyfill.installAll();
     if (!shaka.Player.isBrowserSupported()) {
-      setError('Browser not supported for this player');
+      setError('Browser not supported');
       return;
     }
 
@@ -51,7 +56,6 @@ const VideoPlayer = ({ channel }: { channel: Channel }) => {
       try {
         await player.attach(videoRef.current!);
 
-        // Configure DRM if needed
         const drmConfig: any = {};
         if (channel.clearKey) {
           drmConfig.clearKeys = channel.clearKey;
@@ -63,12 +67,11 @@ const VideoPlayer = ({ channel }: { channel: Channel }) => {
         player.configure({
           drm: drmConfig,
           streaming: {
-            bufferingGoal: 15,
+            bufferingGoal: 10,
             rebufferingGoal: 2,
           }
         });
 
-        // Add request filters for headers if needed
         player.getNetworkingEngine()?.registerRequestFilter((type, request) => {
           if (channel.headers) {
             Object.entries(channel.headers).forEach(([key, value]) => {
@@ -78,7 +81,9 @@ const VideoPlayer = ({ channel }: { channel: Channel }) => {
         });
 
         await player.load(channel.url);
-        videoRef.current?.play();
+        videoRef.current?.play().catch(() => {
+          // Autoplay might be blocked, show a play button or just wait
+        });
       } catch (e: any) {
         console.error('Error loading stream:', e);
         setError(`Failed to load stream: ${e.message || 'Unknown error'}`);
@@ -91,28 +96,40 @@ const VideoPlayer = ({ channel }: { channel: Channel }) => {
   }, [player, channel]);
 
   return (
-    <div ref={containerRef} className="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-white/10">
+    <div ref={containerRef} className="relative w-full aspect-video bg-black overflow-hidden shadow-2xl border-b border-white/5 md:rounded-2xl md:border md:border-white/10">
       <video
         ref={videoRef}
         className="w-full h-full"
-        controls
-        autoPlay
         playsInline
+        muted={isMuted}
+        onClick={() => setIsMuted(!isMuted)}
       />
       
+      {/* Mobile Controls Overlay */}
+      <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between opacity-0 hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setIsMuted(!isMuted)} className="p-2 bg-white/10 rounded-full backdrop-blur-md">
+            <Volume2 className={`w-5 h-5 ${isMuted ? 'text-red-400' : 'text-white'}`} />
+          </button>
+        </div>
+        <button onClick={onFullScreen} className="p-2 bg-white/10 rounded-full backdrop-blur-md">
+          <Maximize2 className="w-5 h-5 text-white" />
+        </button>
+      </div>
+
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-6 text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
-          <p className="text-white font-medium mb-2">{error}</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6 text-center">
+          <AlertCircle className="w-10 h-10 text-red-500 mb-3" />
+          <p className="text-white text-sm font-medium mb-4">{error}</p>
           <button 
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+            className="px-6 py-2 bg-indigo-600 text-white rounded-full text-sm font-bold"
           >
             Retry
           </button>
@@ -121,8 +138,15 @@ const VideoPlayer = ({ channel }: { channel: Channel }) => {
 
       {!channel && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900">
-          <Tv className="w-16 h-16 text-zinc-700 mb-4" />
-          <p className="text-zinc-500 font-medium">Select a channel to start watching</p>
+          <Tv className="w-12 h-12 text-zinc-700 mb-3" />
+          <p className="text-zinc-500 text-sm font-medium">Select a channel to start</p>
+        </div>
+      )}
+
+      {isMuted && !loading && !error && channel && (
+        <div className="absolute top-4 right-4 px-3 py-1 bg-black/60 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
+          <Volume2 className="w-3 h-3 text-red-400" />
+          <span className="text-[10px] font-bold text-white uppercase tracking-wider">Tap for sound</span>
         </div>
       )}
     </div>
@@ -135,26 +159,26 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<string>('All');
+  const [activeTab, setActiveTab] = useState<'home' | 'channels' | 'favs' | 'profile'>('home');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    const fetchChannels = async () => {
-      try {
-        const response = await fetch('/api/channels');
-        const data = await response.json();
-        setChannels(data);
-        if (data.length > 0) {
-          // Don't auto-select to avoid multiple autoplay issues
-          // setSelectedChannel(data[0]);
-        }
-      } catch (error) {
-        console.error('Error fetching channels:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchChannels();
   }, []);
+
+  const fetchChannels = async () => {
+    setIsRefreshing(true);
+    try {
+      const response = await fetch('/api/channels');
+      const data = await response.json();
+      setChannels(data);
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
   const groups = ['All', ...Array.from(new Set(channels.map(c => c.group)))];
 
@@ -164,107 +188,100 @@ export default function App() {
     return matchesSearch && matchesGroup;
   });
 
+  const handleFullScreen = () => {
+    const video = document.querySelector('video');
+    if (video?.requestFullscreen) {
+      video.requestFullscreen();
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#0a0a0c] text-zinc-100 font-sans selection:bg-indigo-500/30">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-[#0a0a0c]/80 backdrop-blur-xl border-b border-white/5 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Shield className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans selection:bg-indigo-500/30 pb-20 md:pb-0">
+      {/* Mobile Header */}
+      <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-2xl border-b border-white/5 px-4 py-3 md:px-8 md:py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <Shield className="w-5 h-5 md:w-6 md:h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
+              <h1 className="text-base md:text-xl font-black tracking-tight text-white leading-none">
                 PREMIUM LIVE
               </h1>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold">Adult Entertainment</p>
+              <p className="text-[8px] md:text-[10px] uppercase tracking-[0.2em] text-indigo-500 font-bold mt-0.5">Mobile Edition</p>
             </div>
           </div>
 
-          <div className="flex-1 max-w-md relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-indigo-400 transition-colors" />
-            <input
-              type="text"
-              placeholder="Search channels..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-zinc-900/50 border border-white/5 rounded-full py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all placeholder:text-zinc-600"
-            />
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button className="p-2 hover:bg-white/5 rounded-full transition-colors text-zinc-400 hover:text-white">
-              <Settings className="w-5 h-5" />
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={fetchChannels}
+              className={`p-2 hover:bg-white/5 rounded-full transition-all ${isRefreshing ? 'animate-spin text-indigo-400' : 'text-zinc-400'}`}
+            >
+              <RefreshCcw className="w-5 h-5" />
             </button>
-            <div className="h-8 w-px bg-white/10" />
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full">
-              <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
-              <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Live Now</span>
-            </div>
+            <button className="p-2 bg-white/5 rounded-full text-zinc-400">
+              <User className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="max-w-7xl mx-auto md:px-6 md:py-8">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-0 md:gap-8">
           
-          {/* Main Content Area */}
-          <div className="lg:col-span-8 space-y-6">
-            <VideoPlayer channel={selectedChannel!} />
+          {/* Sticky Player Container */}
+          <div className="lg:col-span-8 sticky top-[57px] md:top-24 z-40 bg-black md:static">
+            <VideoPlayer channel={selectedChannel!} onFullScreen={handleFullScreen} />
             
-            <div className="bg-zinc-900/40 border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h2 className="text-2xl font-bold text-white mb-1">
+            <div className="p-4 md:p-6 bg-zinc-900/40 md:rounded-2xl md:mt-6 border-b border-white/5 md:border md:border-white/10">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 className="text-lg md:text-2xl font-bold text-white truncate">
                     {selectedChannel?.name || 'Select a Channel'}
                   </h2>
-                  <div className="flex items-center gap-2 text-zinc-400 text-sm">
-                    <span className="px-2 py-0.5 bg-zinc-800 rounded text-xs font-medium uppercase tracking-wider">
-                      {selectedChannel?.group || 'General'}
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 rounded text-[10px] font-bold uppercase tracking-wider border border-indigo-500/20">
+                      {selectedChannel?.group || 'Live'}
                     </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Volume2 className="w-3 h-3" /> Stereo
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Info className="w-3 h-3" /> 1080p HD
+                    <span className="text-zinc-600">•</span>
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-1">
+                      <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
+                      Online
                     </span>
                   </div>
                 </div>
-                <button className="px-6 py-2.5 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition-all shadow-xl shadow-white/5">
-                  Add to Favorites
+                <button className="flex-shrink-0 w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center text-zinc-400 hover:text-red-400 transition-colors">
+                  <Heart className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-zinc-500 text-sm leading-relaxed">
-                Experience high-quality premium streaming with zero buffering. Our advanced player supports both DASH and HLS formats with secure DRM protection.
-              </p>
             </div>
           </div>
 
-          {/* Sidebar / Channel List */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
-            <div className="bg-zinc-900/40 border border-white/5 rounded-2xl flex flex-col h-[calc(100vh-200px)] overflow-hidden backdrop-blur-sm">
-              <div className="p-4 border-b border-white/5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold flex items-center gap-2">
-                    <Tv className="w-4 h-4 text-indigo-500" />
-                    Channels
-                  </h3>
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                    {filteredChannels.length} Available
-                  </span>
+          {/* Content Sections */}
+          <div className="lg:col-span-4 p-4 md:p-0 space-y-6">
+            {/* Search & Categories (Only if on Channels tab or Desktop) */}
+            {(activeTab === 'channels' || window.innerWidth > 768) && (
+              <div className="space-y-4">
+                <div className="relative group">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-indigo-400 transition-colors" />
+                  <input
+                    type="text"
+                    placeholder="Search 100+ channels..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-zinc-900/50 border border-white/5 rounded-2xl py-3 pl-11 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-zinc-600 text-sm"
+                  />
                 </div>
-                
+
                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                   {groups.map(group => (
                     <button
                       key={group}
                       onClick={() => setSelectedGroup(group)}
-                      className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
                         selectedGroup === group 
-                          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' 
+                          : 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:bg-zinc-800'
                       }`}
                     >
                       {group}
@@ -272,63 +289,80 @@ export default function App() {
                   ))}
                 </div>
               </div>
+            )}
 
-              <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+            {/* Channel List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                  <LayoutGrid className="w-4 h-4" />
+                  Recommended
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
                 {loading ? (
-                  Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="h-16 bg-zinc-800/50 animate-pulse rounded-xl" />
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="h-20 bg-zinc-900/50 animate-pulse rounded-2xl border border-white/5" />
                   ))
                 ) : filteredChannels.length > 0 ? (
                   filteredChannels.map((channel) => (
                     <button
                       key={channel.id}
-                      onClick={() => setSelectedChannel(channel)}
-                      className={`w-full group flex items-center gap-4 p-3 rounded-xl transition-all ${
+                      onClick={() => {
+                        setSelectedChannel(channel);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className={`w-full group flex items-center gap-4 p-3 rounded-2xl transition-all border ${
                         selectedChannel?.id === channel.id
-                          ? 'bg-indigo-600/20 border border-indigo-500/30'
-                          : 'hover:bg-white/5 border border-transparent'
+                          ? 'bg-indigo-600/10 border-indigo-500/30'
+                          : 'bg-zinc-900/30 border-white/5 hover:bg-white/5'
                       }`}
                     >
-                      <div className="relative w-12 h-12 flex-shrink-0 bg-zinc-800 rounded-lg overflow-hidden border border-white/10">
+                      <div className="relative w-14 h-14 flex-shrink-0 bg-zinc-950 rounded-xl overflow-hidden border border-white/5">
                         {channel.logo ? (
                           <img 
                             src={channel.logo} 
                             alt={channel.name} 
-                            className="w-full h-full object-contain p-1"
+                            className="w-full h-full object-contain p-2"
                             referrerPolicy="no-referrer"
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
-                            <Tv className="w-5 h-5 text-zinc-600" />
+                            <Tv className="w-6 h-6 text-zinc-800" />
                           </div>
                         )}
                         {selectedChannel?.id === channel.id && (
-                          <div className="absolute inset-0 bg-indigo-600/40 flex items-center justify-center">
-                            <Play className="w-4 h-4 text-white fill-white" />
+                          <div className="absolute inset-0 bg-indigo-600/40 flex items-center justify-center backdrop-blur-[2px]">
+                            <Play className="w-5 h-5 text-white fill-white" />
                           </div>
                         )}
                       </div>
                       
                       <div className="flex-1 text-left min-w-0">
                         <h4 className={`font-bold text-sm truncate ${
-                          selectedChannel?.id === channel.id ? 'text-indigo-400' : 'text-zinc-200'
+                          selectedChannel?.id === channel.id ? 'text-indigo-400' : 'text-zinc-100'
                         }`}>
                           {channel.name}
                         </h4>
-                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider truncate">
-                          {channel.group}
-                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider truncate">
+                            {channel.group}
+                          </span>
+                          <span className="w-1 h-1 bg-zinc-700 rounded-full" />
+                          <span className="text-[9px] text-indigo-500 font-bold uppercase tracking-wider">HD Live</span>
+                        </div>
                       </div>
 
-                      <ChevronRight className={`w-4 h-4 transition-transform ${
-                        selectedChannel?.id === channel.id ? 'text-indigo-400 translate-x-1' : 'text-zinc-700 group-hover:text-zinc-500'
+                      <ChevronRight className={`w-5 h-5 transition-transform ${
+                        selectedChannel?.id === channel.id ? 'text-indigo-400 translate-x-1' : 'text-zinc-800 group-hover:text-zinc-600'
                       }`} />
                     </button>
                   ))
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
-                    <Search className="w-8 h-8 mb-2 opacity-20" />
-                    <p className="text-sm font-medium">No channels found</p>
+                  <div className="flex flex-col items-center justify-center py-20 text-zinc-700">
+                    <Search className="w-12 h-12 mb-3 opacity-10" />
+                    <p className="text-sm font-bold uppercase tracking-widest">No Results</p>
                   </div>
                 )}
               </div>
@@ -337,26 +371,54 @@ export default function App() {
         </div>
       </main>
 
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed bottom-0 inset-x-0 z-50 bg-black/80 backdrop-blur-2xl border-t border-white/5 px-6 py-3 md:hidden">
+        <div className="flex items-center justify-between max-w-md mx-auto">
+          <button 
+            onClick={() => setActiveTab('home')}
+            className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-indigo-500' : 'text-zinc-500'}`}
+          >
+            <Home className="w-6 h-6" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Home</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('channels')}
+            className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'channels' ? 'text-indigo-500' : 'text-zinc-500'}`}
+          >
+            <LayoutGrid className="w-6 h-6" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Explore</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('favs')}
+            className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'favs' ? 'text-indigo-500' : 'text-zinc-500'}`}
+          >
+            <Heart className="w-6 h-6" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Favs</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('profile')}
+            className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-indigo-500' : 'text-zinc-500'}`}
+          >
+            <User className="w-6 h-6" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Me</span>
+          </button>
+        </div>
+      </nav>
+
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
         }
         .scrollbar-hide {
           -ms-overflow-style: none;
           scrollbar-width: none;
+        }
+        @keyframes pulse-subtle {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+        .animate-pulse-subtle {
+          animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
       `}</style>
     </div>

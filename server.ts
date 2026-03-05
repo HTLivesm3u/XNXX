@@ -7,43 +7,22 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
 
-  // API routes
-  app.get("/api/channels", async (req, res) => {
-    try {
-      const m3uUrl = "https://spoo.me/XNXx";
-      const response = await axios.get(m3uUrl);
-      const m3uContent = response.data;
+// API routes
+app.get("/api/channels", async (req, res) => {
+  try {
+    const m3uUrl = "https://spoo.me/XNXx";
+    const response = await axios.get(m3uUrl);
+    const m3uContent = response.data;
 
-      const channels = parseM3U(m3uContent);
-      res.json(channels);
-    } catch (error) {
-      console.error("Error fetching M3U:", error);
-      res.status(500).json({ error: "Failed to fetch channels" });
-    }
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    app.use(express.static(path.join(__dirname, "dist")));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
-    });
+    const channels = parseM3U(m3uContent);
+    res.json(channels);
+  } catch (error) {
+    console.error("Error fetching M3U:", error);
+    res.status(500).json({ error: "Failed to fetch channels" });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
+});
 
 function parseM3U(content: string) {
   const lines = content.split("\n");
@@ -54,7 +33,6 @@ function parseM3U(content: string) {
     const line = lines[i].trim();
 
     if (line.startsWith("#EXTINF:")) {
-      // Parse EXTINF
       const info = line.substring(8);
       const logoMatch = info.match(/tvg-logo="([^"]+)"/);
       const groupMatch = info.match(/group-title="([^"]+)"/);
@@ -66,11 +44,9 @@ function parseM3U(content: string) {
     } else if (line.startsWith("#KODIPROP:inputstream.adaptive.license_key=")) {
       const key = line.split("=")[1];
       if (key.includes(":")) {
-        // ClearKey
         const [kid, k] = key.split(":");
         currentChannel.clearKey = { [kid]: k };
       } else if (key.startsWith("http")) {
-        // Widevine URL
         currentChannel.widevineUrl = key;
       }
     } else if (line.startsWith("#EXTHTTP:")) {
@@ -86,10 +62,8 @@ function parseM3U(content: string) {
       currentChannel.headers["User-Agent"] = ua;
     } else if (line.startsWith("http")) {
       currentChannel.url = line;
-      // If we have a URL, it's the end of a channel entry
       if (currentChannel.url) {
         if (!currentChannel.name) {
-          // Try to get name from URL or just use index
           const urlParts = line.split("/");
           const fileName = urlParts[urlParts.length - 1];
           currentChannel.name = fileName.split(".")[0] || `Channel ${channels.length + 1}`;
@@ -99,8 +73,36 @@ function parseM3U(content: string) {
       currentChannel = {};
     }
   }
-
   return channels;
 }
 
-startServer();
+async function setupVite() {
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    app.use(express.static(path.join(__dirname, "dist")));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(__dirname, "dist", "index.html"));
+    });
+  }
+}
+
+// Only start the server if we're not on Vercel (Vercel handles the export)
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  setupVite().then(() => {
+    const PORT = 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  });
+} else {
+  // On Vercel, we still need to setup Vite for the static build if necessary,
+  // but usually Vercel serves the 'dist' folder directly.
+  // For API routes, this file is the entry point.
+}
+
+export default app;
