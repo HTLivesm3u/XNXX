@@ -14,7 +14,7 @@ async function startServer() {
   // API routes
   app.get("/api/channels", async (req, res) => {
     try {
-      const m3uUrl = "https://spoo.me/XNXx";
+      const m3uUrl = "https://clarity-tv.vercel.app/api/playlist/?id=ALLINONE";
       const response = await axios.get(m3uUrl);
       const m3uContent = response.data;
 
